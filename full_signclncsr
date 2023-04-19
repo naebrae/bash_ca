@@ -1,0 +1,121 @@
+#!/bin/bash
+
+if [ "x$1" == "x" ]
+then
+  echo -e "Usage $0 certificatesigning.req address2@domain address3@domain\n"
+  exit
+fi
+
+PASS="changeit"
+REQFILE=$1
+# Remove the extension so we can add our own
+FILE="${REQFILE%.*}"
+
+if [ ! -f "$REQFILE" ]
+then
+  echo "${REQFILE} doesn't exists. Please create it before running this script."
+  exit 1
+fi
+
+SAN=""
+# Add commandline subject alternates
+if [ $# -gt 1 ]
+then
+    sans=("$@")
+    i=1
+    while [ $i -lt ${#sans[@]} ]
+    do
+echo ${sans[i]}
+        # Only add additional email addresses
+        if [[ ${sans[i]} =~ "@" ]]; then  # assume email address
+            SAN=${SAN},"email:${sans[i]}"
+        fi
+        i=$[$i+1]
+    done
+fi
+
+BASE=`dirname $0`
+cert_ca_path=$BASE"/cacerts"
+cert_db_path=$BASE"/db"
+source $BASE/config
+
+if [ ! -f ${cert_ca_path}/${fullca}.crt ]
+then
+  echo "${cert_ca_path}/${fullca}.crt doesn't exists. Please create it before running this script."
+  exit 1
+fi
+
+if [ ! -f ${cert_db_path} ]
+then
+  mkdir -p ${cert_db_path}
+fi
+
+if [ ! -f ${cert_db_path}/${fullca}.idx ]
+then
+  touch ${cert_db_path}/${fullca}.idx
+  touch ${cert_db_path}/${fullca}.idx.attr
+fi
+
+if [ ! -f ${cert_db_path}/${fullca}.srl ]
+then
+  openssl rand -hex -out ${cert_db_path}/${fullca}.srl 8
+fi
+
+openssl ca -batch -days $DAYS \
+-in "$REQFILE" \
+-out "$FILE.crt" \
+-keyfile ${cert_ca_path}/${fullca}.key \
+-cert ${cert_ca_path}/${fullca}.crt \
+-name clients_CA \
+-config <(cat \
+<(printf "[ clients_CA ]\n") \
+<(printf "database=${cert_db_path}/${fullca}.idx\n") \
+<(printf "default_md=sha256\n") \
+<(printf "serial=${cert_db_path}/${fullca}.srl\n") \
+<(printf "new_certs_dir=${cert_db_path}\n") \
+<(printf "policy=policy_anything\n") \
+<(printf "[ policy_anything ]\n") \
+<(printf "countryName=optional\n") \
+<(printf "stateOrProvinceName=optional\n") \
+<(printf "localityName=optional\n") \
+<(printf "organizationName=optional\n") \
+<(printf "organizationalUnitName=optional\n") \
+<(printf "commonName=supplied\n") \
+<(printf "emailAddress=optional\n") \
+) \
+-extensions exts \
+-extfile <(cat \
+<(printf "[ exts ]\n") \
+<(printf "authorityKeyIdentifier=keyid:always,issuer\n") \
+<(printf "subjectKeyIdentifier=hash\n") \
+<(printf "subjectAltName=email:copy$SAN\n") \
+<(printf "keyUsage=critical,digitalSignature,keyEncipherment\n") \
+<(printf "extendedKeyUsage=clientAuth,emailProtection\n") \
+<(printf "basicConstraints=critical,CA:false\n") \
+<(printf "authorityInfoAccess=OCSP;URI:${ocsp_uri},caIssuers;URI:${fullca_uri}\n") \
+<(printf "crlDistributionPoints=URI:${fullca_crl}\n") \
+<(printf "certificatePolicies=@polsect,2.23.140.1.2.3\n") \
+<(printf "[ polsect ]\n") \
+<(printf "policyIdentifier=anyPolicy\n") \
+<(printf "CPS=${cps_uri}\n") \
+)
+# joint-iso-itu-t(2) international-organizations(23) ca-browser-forum(140) certificate-policies(1) baseline-requirements(2)
+# domain-validated(1)  organization-validated(2)  individual-validated(3)
+# individual-validated=2.23.140.1.2.3
+
+
+if [ -f "$FILE.crt" ] && [ -f "$FILE.key" ]
+then
+  openssl pkcs12 -export \
+  -inkey "$FILE.key" \
+  -in "$FILE.crt" \
+  -name "$FILE" \
+  -out "$FILE.pfx" \
+  -certfile ${cert_ca_path}/${fullca}.crt \
+  -password pass:$PASS
+elif [ -f "$FILE.crt" ]
+then
+  openssl crl2pkcs7 -nocrl -certfile "$FILE.crt" -out "$FILE.p7b" -certfile ${cert_ca_path}/${fullca}.crt
+fi
+
+openssl verify -CAfile <(cat ${cert_ca_path}/${fullca}.crt ${cert_ca_path}/${rootca}.crt) "$FILE.crt"

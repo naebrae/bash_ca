@@ -1,0 +1,62 @@
+#!/bin/bash
+
+if [ "x$1" == "x" ]
+then
+  echo -e "Usage $0 certificate.common.name[/emailAddress=address@domain] [guid]\n"
+  exit
+fi
+
+URL=$1
+FILE=`echo $URL | sed "s/\./_/g" | sed "s/\*/star/g" | sed "s/\/.*//"`
+
+#GUID="1947e9f8-dde3-46dc-8549-a67920583998"
+GUIDOCT=""
+if [ "x$2" != "x" ]
+then
+  GUID=$2
+  if [ "x${GUID:8:1}" == "x-" ] && [ "x${GUID:13:1}" == "x-" ] && [ "x${GUID:18:1}" == "x-" ] && [ "x${GUID:23:1}" == "x-" ]
+  then
+    echo "Valid GUID"
+    GUIDOCT=${GUID:6:2}${GUID:4:2}${GUID:2:2}${GUID:0:2}${GUID:11:2}${GUID:9:2}${GUID:16:2}${GUID:14:2}${GUID:19:4}${GUID:24:12}
+  else
+    echo "Invalid GUID entered! Ignoring.."
+    GUIDOCT=""
+  fi
+fi
+
+if [ "x$GUIDOCT" == "x" ]
+then
+  SAN="DNS=$URL\n"
+else
+  SAN="otherName=1.3.6.1.4.1.311.25.1;FORMAT:HEX,OCT:$GUIDOCT\nDNS=$URL\n"
+fi
+
+openssl req -newkey rsa:2048 -nodes \
+-keyout "$FILE.key" \
+-out "$FILE.csr" \
+-subj "/CN=$URL/OU=Computers/DC=ad/DC=lab/DC=local/" \
+-extensions req_attributes \
+-reqexts req_ext \
+-config <(cat \
+<(printf "oid_section=new_oids\n") \
+<(printf "[ new_oids ]\n") \
+<(printf "certificateTemplate=1.3.6.1.4.1.311.20.2\n") \
+<(printf "msADGUID=1.3.6.1.4.1.311.25.1\n") \
+<(printf "msOSVER=1.3.6.1.4.1.311.13.2.3\n") \
+<(printf "msCAVER=1.3.6.1.4.1.311.21.1\n") \
+<(printf "[ req ]\n") \
+<(printf "distinguished_name=req_distinguished_name\n") \
+<(printf "attributes=req_attributes\n") \
+<(printf "[ req_distinguished_name ]\n") \
+<(printf "[ req_attributes ]\n") \
+<(printf "msCAVER=ASN1:INT:0\n") \
+<(printf "msOSVER=ASN1:OCT:10.0.14393.2.\n") \
+<(printf "[ req_ext ]\n") \
+<(printf "certificateTemplate=ASN1:BMP:DomainController\n") \
+<(printf "subjectKeyIdentifier=hash\n") \
+<(printf "subjectAltName=@altname_sec\n") \
+<(printf "keyUsage=digitalSignature,keyCertSign,cRLSign\n") \
+<(printf "basicConstraints=critical,CA:true\n") \
+<(printf "[ altname_sec ]\n") \
+<(printf "$SAN\n") \
+)

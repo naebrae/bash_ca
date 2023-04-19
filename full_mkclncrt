@@ -1,0 +1,112 @@
+#!/bin/bash
+
+if [ "x$1" == "x" ]
+then
+  echo -e "Usage $0 certificate.common.name[/emailAddress=address@domain] address2@domain address3@domain\n"
+  exit
+fi
+
+URL=$1
+FILE=`echo $URL | sed "s/\./_/g" | sed "s/\*/star/g" | sed 's/\/.*//' | sed 's/ /_/'`
+SUBJ="/OU=Clients/CN=$URL"
+# Remove /emailAddress if it exists from URL
+CN=`echo $URL | sed "s/\/.*//"`
+
+SAN=""
+# Add commandline subject alternates
+if [ $# -gt 1 ]
+then
+    sans=("$@")
+    i=1
+    while [ $i -lt ${#sans[@]} ]
+    do
+echo ${sans[i]}
+        # Only add additional email addresses
+        if [[ ${sans[i]} =~ "@" ]]; then  # assume email address
+            SAN=${SAN},"email:${sans[i]}"
+        fi
+        i=$[$i+1]
+    done
+fi
+
+BASE=`dirname $0`
+cert_ca_path=$BASE"/cacerts"
+cert_db_path=$BASE"/db"
+source $BASE/config
+
+if [ ! -f ${cert_ca_path}/${fullca}.crt ]
+then
+  echo "${cert_ca_path}/${fullca}.crt doesn't exists. Please create it before running this script."
+  exit 1
+fi
+
+if [ ! -f ${cert_db_path} ]
+then
+  mkdir -p ${cert_db_path}
+fi
+
+if [ ! -f ${cert_db_path}/${fullca}.idx ]
+then
+  touch ${cert_db_path}/${fullca}.idx
+  touch ${cert_db_path}/${fullca}.idx.attr
+fi
+
+if [ ! -f ${cert_db_path}/${fullca}.srl ]
+then
+  openssl rand -hex -out ${cert_db_path}/${fullca}.srl 8
+fi
+
+# For MongoDB, a client x.509 certificate’s subject, which contains the Distinguished Name (DN), must differ from that of a server x.509 Certificate. 
+# Specifically, the subjects must differ with regards to at least one of the following attributes: Organization (O), the Organizational Unit (OU) or the Domain Component (DC).
+openssl req -newkey rsa:2048 -nodes \
+-keyout "$FILE.key" \
+-out "$FILE.csr" \
+-subj "$SUBJ"
+
+openssl ca -batch -days $DAYS \
+-in "$FILE.csr" \
+-out "$FILE.crt" \
+-keyfile ${cert_ca_path}/${fullca}.key \
+-cert ${cert_ca_path}/${fullca}.crt \
+-name clients_CA \
+-config <(cat \
+<(printf "[ clients_CA ]\n") \
+<(printf "database=${cert_db_path}/${fullca}.idx\n") \
+<(printf "default_md=sha256\n") \
+<(printf "serial=${cert_db_path}/${fullca}.srl\n") \
+<(printf "new_certs_dir=${cert_db_path}\n") \
+<(printf "policy=policy_anything\n") \
+<(printf "[ policy_anything ]\n") \
+<(printf "countryName=optional\n") \
+<(printf "stateOrProvinceName=optional\n") \
+<(printf "localityName=optional\n") \
+<(printf "organizationName=optional\n") \
+<(printf "organizationalUnitName=optional\n") \
+<(printf "commonName=supplied\n") \
+<(printf "emailAddress=optional\n") \
+) \
+-extensions exts \
+-extfile <(cat \
+<(printf "[ exts ]\n") \
+<(printf "authorityKeyIdentifier=keyid:always,issuer\n") \
+<(printf "subjectKeyIdentifier=hash\n") \
+<(printf "subjectAltName=email:copy$SAN\n") \
+<(printf "keyUsage=critical,digitalSignature,keyEncipherment\n") \
+<(printf "extendedKeyUsage=clientAuth\n") \
+<(printf "basicConstraints=critical,CA:false\n") \
+<(printf "authorityInfoAccess=OCSP;URI:${ocsp_uri},caIssuers;URI:${fullca_uri}\n") \
+<(printf "crlDistributionPoints=URI:${fullca_crl}\n") \
+<(printf "certificatePolicies=@polsect\n") \
+<(printf "[ polsect ]\n") \
+<(printf "policyIdentifier=anyPolicy\n") \
+<(printf "CPS=${cps_uri}\n") \
+)
+
+if [ -f "$FILE.crt" ] && [ -f "$FILE.key" ]
+then
+  openssl pkcs12 -export -out "$FILE.pfx" -inkey "$FILE.key" -in "$FILE.crt" -name "$FILE" -certfile ${cert_ca_path}/${fullca}.crt -password pass:$PASS
+else
+  echo -e "Could not file necessary files in current directory\n"
+fi
+
+openssl verify -CAfile <(cat ${cert_ca_path}/${fullca}.crt ${cert_ca_path}/${rootca}.crt) "$FILE.crt"

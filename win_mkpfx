@@ -1,0 +1,36 @@
+#!/bin/bash
+
+if [ "x$1" == "x" ]
+then
+  echo -e "Usage $0 certificate.crt\n"
+  exit
+fi
+
+PASS="changeit"
+CRTFILE=$1
+# Remove the extension so we can add our own
+FILE="${CRTFILE%.*}"
+
+if [ ! -f "$CRTFILE" ]
+then
+  echo "${CRTFILE} doesn't exists. Please create it before running this script."
+  exit 1
+fi
+
+if [ ! -f "$FILE.key" ]
+then
+  echo "${FILE}.key doesn't exists. Please create it before running this script."
+  exit 1
+fi
+
+openssl pkcs12 -export \
+-inkey "$FILE.key" \
+-in "$CRTFILE" \
+-name "$FILE" \
+-out "$FILE.pfx" \
+-keyex \
+-CSP "Microsoft Software Key Storage Provider" \
+-keypbe PBE-SHA1-3DES \
+-certpbe PBE-SHA1-3DES \
+-password pass:$PASS
+

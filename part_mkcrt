@@ -1,0 +1,91 @@
+#!/bin/bash
+
+if [ "x$1" == "x" ]
+then
+  echo -e "Usage $0 certificate.common.name[/emailAddress=address@domain] subject.alternate.name subject.alternate.ip.address\n"
+  exit
+fi
+
+URL=$1
+FILE=`echo $URL | sed "s/\./_/g" | sed "s/\*/star/g" | sed "s/\/.*//"`
+# Remove /emailAddress if it exists from URL
+CN=`echo $URL | sed "s/\/.*//"`
+SUBJ="/C=AU/ST=Western Australia/L=Perth/O=Local/OU=Lab/CN=$URL"
+PASS="changeit"
+
+BASE=`dirname $0`
+cert_ca_path=$BASE"/cacerts"
+cert_db_path=$BASE"/db"
+source $BASE/config
+
+if [ ! -f ${cert_ca_path}/${partca}.crt ]
+then
+  echo "${cert_ca_path}/${partca}.crt doesn't exists. Please create it before running this script."
+  exit 1
+fi
+
+if [ ! -f ${cert_db_path} ]
+then
+  mkdir -p ${cert_db_path}
+fi
+
+SAN="DNS:"$CN
+# If CN is a wildcard, add base domain as SAN.
+if [[ $CN = "*."* ]]
+then
+  SAN=$SAN",DNS:"`echo $CN | sed "s/\*\.//g"`
+fi
+
+# Add commandline subject alternates
+if [ $# -gt 1 ]
+then
+    sans=($@)
+    i=1
+    while [ $i -lt ${#sans[@]} ]
+    do
+        if [[ ${sans[i]} =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            SAN=${SAN},"IP:${sans[i]}"
+        elif [[ ${sans[i]} =~ ":" ]]; then  # assume IPv6
+            SAN=${SAN},"IP:${sans[i]}"
+        else
+            SAN=${SAN},"DNS:${sans[i]}"
+        fi
+        i=$[$i+1]
+    done
+fi
+
+openssl req -newkey rsa:2048 -nodes \
+-keyout "$FILE.key" \
+-out "$FILE.csr" \
+-subj "$SUBJ"
+
+openssl x509 -req -days $DAYS -sha256 \
+-in "$FILE.csr" \
+-out "$FILE.crt" \
+-CA ${cert_ca_path}/${partca}.crt \
+-CAkey ${cert_ca_path}/${partca}.key \
+-CAcreateserial \
+-CAserial ${cert_db_path}/${partca}.srl \
+-extensions exts \
+-extfile <(cat \
+<(printf "[ exts ]\n") \
+<(printf "authorityKeyIdentifier=keyid:always,issuer\n") \
+<(printf "subjectKeyIdentifier=hash\n") \
+<(printf "subjectAltName=$SAN\n") \
+<(printf "keyUsage=critical,digitalSignature,keyEncipherment\n") \
+<(printf "extendedKeyUsage=serverAuth,clientAuth\n") \
+<(printf "certificatePolicies=@polsect\n") \
+<(printf "basicConstraints=critical,CA:false\n") \
+<(printf "[ polsect ]\n") \
+<(printf "policyIdentifier=anyPolicy\n") \
+<(printf "CPS=${cps_uri}\n") \
+)
+
+if [ -f "$FILE.crt" ] && [ -f "$FILE.key" ]
+then
+  openssl pkcs12 -export -out "$FILE.pfx" -inkey "$FILE.key" -in "$FILE.crt" -name "$FILE" -certfile ${cert_ca_path}/${partca}.crt -password pass:$PASS
+else
+  echo -e "Could not file necessary files in current directory\n"
+fi
+
+openssl verify -CAfile <(cat ${cert_ca_path}/${partca}.crt ${cert_ca_path}/${rootca}.crt) "$FILE.crt"

@@ -1,0 +1,127 @@
+#!/bin/bash
+
+if [ "x$1" == "x" ]
+then
+  echo -e "Usage $0 certificatesigning.req\n"
+  exit
+fi
+
+REQFILE=$1
+# Remove the extension so we can add our own
+FILE="${REQFILE%.*}"
+
+if [ ! -f "$REQFILE" ]
+then
+  echo "${REQFILE} doesn't exists. Please create it before running this script."
+  exit 1
+fi
+
+BASE=`dirname $0`
+cert_ca_path=$BASE"/cacerts"
+cert_db_path=$BASE"/db"
+source $BASE/config
+
+if [ ! -f ${cert_ca_path}/${fullca}.crt ]
+then
+  echo "${cert_ca_path}/${fullca}.crt doesn't exists. Please create it before running this script."
+  exit 1
+fi
+
+if [ ! -f ${cert_db_path} ]
+then
+  mkdir -p ${cert_db_path}
+fi
+
+if [ ! -f ${cert_db_path}/${fullca}.idx ]
+then
+  touch ${cert_db_path}/${fullca}.idx
+  touch ${cert_db_path}/${fullca}.idx.attr
+fi
+
+if [ ! -f ${cert_db_path}/${fullca}.srl ]
+then
+  openssl rand -hex -out ${cert_db_path}/${fullca}.srl 8
+fi
+
+# openssl 1.0.x -> subject=/C=AU/ST=Western Australia/L=Perth/O=Local/OU=Lab/CN=www.lab.local
+# openssl 1.1.x -> subject=C = AU, ST = Western Australia, L = Perth, O = Local, OU = Lab, CN = www.lab.local
+URL=`openssl req -noout -subject -in "$REQFILE" | sed 's/ = /=/g' | sed -n '/^subject/s/^.*CN=//p' | sed 's/\/.*//'`
+if [ "x$URL" == "x" ]
+then
+  echo "CSR does not contain a subject. Can not continue."
+  exit 1
+fi
+SAN="DNS:"$URL
+
+newsubj="\
+/businessCategory=Private Organization\
+/jurisdictionCountryName=AU\
+/jurisdictionLocalityName=Perth\
+/jurisdictionStateOrProvinceName=Western Australia\
+/serialNumber=123 45\
+/streetAddress=123 My Street\
+/postalCode=6000\
+/C=AU/ST=Western Australia/L=Perth/O=Local/OU=Lab/CN=$URL"
+
+#https://cabforum.org/ev-certificate-contents/
+#Business Category (EVG 9.2.4) – This field must contain one of the following strings: “Private Organization”, “Government Entity”, “Business Entity”, or “Non-Commercial Entity”
+
+openssl ca -batch \
+-days $DAYS \
+-in "$FILE.csr" \
+-out "$FILE.crt" \
+-keyfile ${cert_ca_path}/${fullca}.key \
+-cert ${cert_ca_path}/${fullca}.crt \
+-subj "${newsubj}" \
+-name servers_CA \
+-config <(cat \
+<(printf "[ servers_CA ]\n") \
+<(printf "database=${cert_db_path}/${fullca}.idx\n") \
+<(printf "default_md=sha256\n") \
+<(printf "serial=${cert_db_path}/${fullca}.srl\n") \
+<(printf "new_certs_dir=${cert_db_path}\n") \
+<(printf "policy=policy_anything\n") \
+<(printf "[ policy_anything ]\n") \
+<(printf "businessCategory=supplied\n") \
+<(printf "jurisdictionCountryName=supplied\n") \
+<(printf "jurisdictionLocalityName=supplied\n") \
+<(printf "jurisdictionStateOrProvinceName=supplied\n") \
+<(printf "serialNumber=supplied\n") \
+<(printf "streetAddress=supplied\n") \
+<(printf "postalCode=supplied\n") \
+<(printf "countryName=optional\n") \
+<(printf "stateOrProvinceName=optional\n") \
+<(printf "localityName=optional\n") \
+<(printf "organizationName=optional\n") \
+<(printf "organizationalUnitName=optional\n") \
+<(printf "commonName=supplied\n") \
+<(printf "emailAddress=optional\n") \
+) \
+-extensions exts \
+-extfile <(cat \
+<(printf "[ exts ]\n") \
+<(printf "authorityKeyIdentifier=keyid:always,issuer\n") \
+<(printf "subjectKeyIdentifier=hash\n") \
+<(printf "subjectAltName=$SAN\n") \
+<(printf "keyUsage=critical,digitalSignature,keyEncipherment\n") \
+<(printf "extendedKeyUsage=serverAuth,clientAuth\n") \
+<(printf "basicConstraints=critical,CA:false\n") \
+<(printf "authorityInfoAccess=OCSP;URI:${ocsp_uri},caIssuers;URI:${fullca_uri}\n") \
+<(printf "crlDistributionPoints=URI:${fullca_crl}\n") \
+<(printf "certificatePolicies=@polsect,2.23.140.1.1\n") \
+<(printf "[ polsect ]\n") \
+<(printf "policyIdentifier=anyPolicy\n") \
+<(printf "CPS=${cps_uri}\n") \
+)
+# joint-iso-itu-t(2) international-organizations(23) ca-browser-forum(140) certificate-policies(1)
+# ev-guidelines(1)  baseline-requirements(2)  3  code-signing-requirements(4)
+# ev-guidelines=2.23.140.1.1
+
+if [ -f "$FILE.crt" ] && [ -f "$FILE.key" ]
+then
+  openssl pkcs12 -export -out "$FILE.pfx" -inkey "$FILE.key" -in "$FILE.crt" -name "$FILE" -certfile ${cert_ca_path}/${fullca}.crt -password pass:$PASS
+else
+  echo -e "Could not file necessary files in current directory\n"
+fi
+
+openssl verify -CAfile <(cat ${cert_ca_path}/${fullca}.crt ${cert_ca_path}/${rootca}.crt) "$FILE.crt"

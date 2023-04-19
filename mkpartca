@@ -1,0 +1,57 @@
+#!/bin/bash
+
+BASE=`dirname $0`
+cert_ca_path=$BASE"/cacerts"
+cert_db_path=$BASE"/db"
+source ${BASE}/config
+
+if [ ! -f ${cert_ca_path}/${rootca}.crt ]
+then
+  echo "${cert_ca_path}/${rootca}.crt doesn't exists. Please create it before running this script."
+  exit 1
+fi
+
+openssl req -newkey rsa:2048 -nodes \
+-keyout ${cert_ca_path}/${partca}.key \
+-out ${cert_ca_path}/${partca}.csr \
+-subj "${partca_subj}"
+
+openssl ca -batch -days 7304 \
+-in ${cert_ca_path}/${partca}.csr \
+-out ${cert_ca_path}/${partca}.crt \
+-keyfile ${cert_ca_path}/${rootca}.key \
+-cert ${cert_ca_path}/${rootca}.crt \
+-name root_CA \
+-config <(cat \
+<(printf "[ root_CA ]\n") \
+<(printf "database=${cert_db_path}/${rootca}.idx\n") \
+<(printf "default_md=sha256\n") \
+<(printf "serial=${cert_db_path}/${rootca}.srl\n") \
+<(printf "new_certs_dir=${cert_db_path}\n") \
+<(printf "policy=policy_anything\n") \
+<(printf "[ policy_anything ]\n") \
+<(printf "countryName=optional\n") \
+<(printf "stateOrProvinceName=optional\n") \
+<(printf "localityName=optional\n") \
+<(printf "organizationName=optional\n") \
+<(printf "organizationalUnitName=optional\n") \
+<(printf "commonName=supplied\n") \
+<(printf "emailAddress=optional\n") \
+) \
+-extensions exts \
+-extfile <(cat \
+<(printf "[ exts ]\n") \
+<(printf "basicConstraints=critical,CA:true,pathlen:0\n") \
+<(printf "keyUsage=critical,digitalSignature,keyCertSign,cRLSign\n") \
+<(printf "extendedKeyUsage=serverAuth,clientAuth\n") \
+<(printf "authorityInfoAccess=OCSP;URI:${ocsp_uri}\n") \
+<(printf "crlDistributionPoints=URI:${rootca_crl}\n") \
+<(printf "certificatePolicies=@polsect\n") \
+<(printf "subjectKeyIdentifier=hash\n") \
+<(printf "authorityKeyIdentifier=keyid:always,issuer\n") \
+<(printf "[ polsect ]\n") \
+<(printf "policyIdentifier=anyPolicy\n") \
+<(printf "CPS=${cps_uri}\n") \
+)
+
+openssl verify -CAfile ${cert_ca_path}/${rootca}.crt ${cert_ca_path}/${partca}.crt

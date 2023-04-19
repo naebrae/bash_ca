@@ -1,0 +1,19 @@
+#!/bin/bash
+
+if [ "x$1" == "x" ]
+then
+  echo -e "Usage $0 certificate.common.name[/emailAddress=address@domain]\n"
+  exit
+fi
+
+URL=$1
+FILE=`echo $URL | sed "s/\./_/g" | sed "s/\*/star/g" | sed 's/\/.*//' | sed 's/ /_/'`
+SUBJ="/OU=Clients/CN=$URL"
+
+openssl req -newkey rsa:2048 -nodes \
+-out $FILE.csr \
+-keyout $FILE.key \
+-subj "$SUBJ"
+
+# Convert PKCS#8 key created above to PKCS#1 private key
+openssl rsa -in $FILE.key -out $FILE.key

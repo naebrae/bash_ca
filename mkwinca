@@ -1,0 +1,86 @@
+#!/bin/bash
+
+PASS="changeit"
+BASE=`dirname $0`
+cert_ca_path=$BASE"/cacerts"
+cert_db_path=$BASE"/db"
+source ${BASE}/config
+
+if [ ! -f ${cert_ca_path}/${rootca}.crt ]
+then
+  echo "${cert_ca_path}/${rootca}.crt doesn't exists. Please create it before running this script."
+  exit 1
+fi
+
+if [ ! -f ${cert_db_path} ]
+then
+  mkdir -p ${cert_db_path}
+fi
+
+if [ ! -f ${cert_db_path}/${winca}.idx ]
+then
+  touch ${cert_db_path}/${winca}.idx
+  echo "unique_subject = no" > ${cert_db_path}/${winca}.idx.attr
+fi
+
+if [ ! -f ${cert_db_path}/${winca}.srl ]
+then
+  openssl rand -hex -out ${cert_db_path}/${winca}.srl 20
+fi
+
+openssl req -newkey rsa:2048 -nodes \
+-keyout ${cert_ca_path}/${winca}.key \
+-out ${cert_ca_path}/${winca}.csr \
+-subj "${winca_subj}"
+
+openssl ca -batch -days 7304 \
+-in ${cert_ca_path}/${winca}.csr \
+-out ${cert_ca_path}/${winca}.crt \
+-keyfile ${cert_ca_path}/${rootca}.key \
+-cert ${cert_ca_path}/${rootca}.crt \
+-name root_CA \
+-config <(cat \
+<(printf "[ root_CA ]\n") \
+<(printf "database=${cert_db_path}/${rootca}.idx\n") \
+<(printf "default_md=sha256\n") \
+<(printf "serial=${cert_db_path}/${rootca}.srl\n") \
+<(printf "new_certs_dir=${cert_db_path}\n") \
+<(printf "policy=policy_anything\n") \
+<(printf "[ policy_anything ]\n") \
+<(printf "countryName=optional\n") \
+<(printf "stateOrProvinceName=optional\n") \
+<(printf "localityName=optional\n") \
+<(printf "organizationName=optional\n") \
+<(printf "organizationalUnitName=optional\n") \
+<(printf "commonName=supplied\n") \
+<(printf "emailAddress=optional\n") \
+) \
+-extensions exts \
+-extfile <(cat \
+<(printf "[ exts ]\n") \
+<(printf "1.3.6.1.4.1.311.21.1=ASN1:INT:0\n") \
+<(printf "subjectKeyIdentifier=hash\n") \
+<(printf "1.3.6.1.4.1.311.20.2=ASN1:BMP:SubCA\n") \
+<(printf "keyUsage=digitalSignature,keyCertSign,cRLSign\n") \
+<(printf "basicConstraints=critical,CA:true\n") \
+<(printf "authorityKeyIdentifier=keyid:always,issuer\n") \
+)
+
+if [ -f ${cert_ca_path}/${winca}.crt ] && [ -f ${cert_ca_path}/${winca}.key ]
+then
+  openssl pkcs12 -export \
+  -inkey ${cert_ca_path}/${winca}.key \
+  -in ${cert_ca_path}/${winca}.crt \
+  -name "${cert_ca_name}" \
+  -certfile ${cert_ca_path}/${rootca}.crt \
+  -out ${cert_ca_path}/${winca}.p12 \
+  -keyex \
+  -CSP "Microsoft Software Key Storage Provider" \
+  -keypbe PBE-SHA1-3DES \
+  -certpbe PBE-SHA1-3DES \
+  -password pass:$PASS
+else
+  echo -e "Could not file necessary files in current directory\n"
+fi
+
+openssl verify -CAfile ${cert_ca_path}/${rootca}.crt ${cert_ca_path}/${winca}.crt

@@ -1,0 +1,141 @@
+#!/bin/bash
+
+if [ "x$1" == "x" ]
+then
+  echo -e "Usage $0 certificate.common.name subject.alternate.name subject.alternate.ip.address\n"
+  exit
+fi
+
+URL=$1
+FILE=`echo $URL | sed "s/\./_/g" | sed "s/\*/star/g" | sed "s/\/.*//"`
+# Remove /emailAddress if it exists from URL
+CN=`echo $URL | sed "s/\/.*//"`
+SUBJ="\
+/businessCategory=Private Organization\
+/jurisdictionCountryName=AU\
+/jurisdictionLocalityName=Perth\
+/jurisdictionStateOrProvinceName=Western Australia\
+/serialNumber=123 45\
+/streetAddress=123 My Street\
+/postalCode=6000\
+/C=AU/ST=Western Australia/L=Perth/O=Local/OU=Lab/CN=$URL"
+PASS="changeit"
+
+BASE=`dirname $0`
+cert_ca_path=$BASE"/cacerts"
+cert_db_path=$BASE"/db"
+source $BASE/config
+
+if [ ! -f ${cert_ca_path}/${fullca}.crt ]
+then
+  echo "${cert_ca_path}/${fullca}.crt doesn't exists. Please create it before running this script."
+  exit 1
+fi
+
+if [ ! -f ${cert_db_path} ]
+then
+  mkdir -p ${cert_db_path}
+fi
+
+SAN="DNS:"$CN
+# If CN is a wildcard, add base domain as SAN.
+if [[ $CN = "*."* ]]
+then
+  SAN=$SAN",DNS:"`echo $CN | sed "s/\*\.//g"`
+fi
+
+# Add commandline subject alternates
+if [ $# -gt 1 ]
+then
+    sans=($@)
+    i=1
+    while [ $i -lt ${#sans[@]} ]
+    do
+        if [[ ${sans[i]} =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            SAN=${SAN},"IP:${sans[i]}"
+        elif [[ ${sans[i]} =~ ":" ]]; then  # assume IPv6
+            SAN=${SAN},"IP:${sans[i]}"
+        else
+            SAN=${SAN},"DNS:${sans[i]}"
+        fi
+        i=$[$i+1]
+    done
+fi
+
+# new_oids if needed
+# <(printf "jurisdictionL = 1.3.6.1.4.1.311.60.2.1.1\n") \
+# <(printf "jurisdictionST = 1.3.6.1.4.1.311.60.2.1.2\n") \
+# <(printf "jurisdictionC = 1.3.6.1.4.1.311.60.2.1.3\n") \
+# <(printf "jurisdictionLocalityName = 1.3.6.1.4.1.311.60.2.1.1\n") \
+# <(printf "jurisdictionStateOrProvinceName = 1.3.6.1.4.1.311.60.2.1.2\n") \
+# <(printf "jurisdictionCountryName = 1.3.6.1.4.1.311.60.2.1.3\n") \
+
+openssl req -newkey rsa:2048 -nodes \
+-keyout "$FILE.key" \
+-out "$FILE.csr" \
+-config <(cat \
+<(printf "oid_section=new_oids\n") \
+<(printf "[ new_oids ]\n") \
+<(printf "[ req ]\n") \
+<(printf "distinguished_name=req_distinguished_name\n") \
+<(printf "[ req_distinguished_name ]\n") \
+) \
+-subj "$SUBJ"
+
+openssl ca -batch -days $DAYS \
+-in "$FILE.csr" \
+-out "$FILE.crt" \
+-keyfile ${cert_ca_path}/${fullca}.key \
+-cert ${cert_ca_path}/${fullca}.crt \
+-name servers_CA \
+-config <(cat \
+<(printf "[ servers_CA ]\n") \
+<(printf "database=${cert_db_path}/${fullca}.idx\n") \
+<(printf "default_md=sha256\n") \
+<(printf "serial=${cert_db_path}/${fullca}.srl\n") \
+<(printf "new_certs_dir=${cert_db_path}\n") \
+<(printf "policy=policy_anything\n") \
+<(printf "[ policy_anything ]\n") \
+<(printf "businessCategory=supplied\n") \
+<(printf "jurisdictionCountryName=supplied\n") \
+<(printf "jurisdictionLocalityName=supplied\n") \
+<(printf "jurisdictionStateOrProvinceName=supplied\n") \
+<(printf "serialNumber=supplied\n") \
+<(printf "streetAddress=supplied\n") \
+<(printf "postalCode=supplied\n") \
+<(printf "countryName=optional\n") \
+<(printf "stateOrProvinceName=optional\n") \
+<(printf "localityName=optional\n") \
+<(printf "organizationName=optional\n") \
+<(printf "organizationalUnitName=optional\n") \
+<(printf "commonName=supplied\n") \
+<(printf "emailAddress=optional\n") \
+) \
+-extensions exts \
+-extfile <(cat \
+<(printf "[ exts ]\n") \
+<(printf "authorityKeyIdentifier=keyid:always,issuer\n") \
+<(printf "subjectKeyIdentifier=hash\n") \
+<(printf "subjectAltName=$SAN\n") \
+<(printf "keyUsage=critical,digitalSignature,keyEncipherment\n") \
+<(printf "extendedKeyUsage=serverAuth,clientAuth\n") \
+<(printf "basicConstraints=critical,CA:false\n") \
+<(printf "authorityInfoAccess=OCSP;URI:${ocsp_uri},caIssuers;URI:${fullca_uri}\n") \
+<(printf "crlDistributionPoints=URI:${fullca_crl}\n") \
+<(printf "certificatePolicies=@polsect,2.23.140.1.1\n") \
+<(printf "[ polsect ]\n") \
+<(printf "policyIdentifier=anyPolicy\n") \
+<(printf "CPS=${cps_uri}\n") \
+)
+# joint-iso-itu-t(2) international-organizations(23) ca-browser-forum(140) certificate-policies(1)
+# ev-guidelines(1)  baseline-requirements(2)  3  code-signing-requirements(4)
+# ev-guidelines=2.23.140.1.1
+
+if [ -f "$FILE.crt" ] && [ -f "$FILE.key" ]
+then
+  openssl pkcs12 -export -out "$FILE.pfx" -inkey "$FILE.key" -in "$FILE.crt" -name "$FILE" -certfile ${cert_ca_path}/${fullca}.crt -password pass:$PASS
+else
+  echo -e "Could not file necessary files in current directory\n"
+fi
+
+openssl verify -CAfile <(cat ${cert_ca_path}/${fullca}.crt ${cert_ca_path}/${rootca}.crt) "$FILE.crt"

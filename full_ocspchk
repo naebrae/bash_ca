@@ -1,0 +1,36 @@
+#!/bin/bash
+
+if [ "x$1" == "x" ]
+then
+  echo -e "Usage $0 certificate.file\n"
+  exit
+fi
+
+FILE=$1
+
+if [ ! -f "$FILE" ]
+then
+  echo -e "Could not find $FILE! Exiting..\n"
+  exit
+fi
+
+BASE=`dirname $0`
+cert_ca_path=$BASE"/cacerts"
+cert_db_path=$BASE"/db"
+source $BASE/config
+
+if [ ! -f ${cert_ca_path}/${fullca}.crt ]
+then
+  echo "${cert_ca_path}/${fullca}.crt doesn't exists. Please create it before running this script."
+  exit 1
+fi
+
+openssl ocsp -CAfile <(cat ${cert_ca_path}/${fullca}.crt ${cert_ca_path}/${rootca}.crt) -text \
+-url http://127.0.0.1:2560 \
+-issuer ${cert_ca_path}/${fullca}.crt \
+-cert "$FILE"
+
+echo -n -e "\nNote: This message is normal:\n\n"
+echo -n -e "    Response Verify Failure\n"
+echo -n -e "    OCSP_basic_verify:signer certificate not found:ocsp_vfy.c:92:\n"
+echo -n -e "\nThis is because the OCSP server is configured with the -resp_no_certs option which prevents the sending of the signer certificate\n"

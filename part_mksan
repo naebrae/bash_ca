@@ -1,0 +1,96 @@
+#!/bin/bash
+
+if [ "x$1" == "x" ]
+then
+  echo -e "Usage $0 certificate.common.name[/emailAddress=] subject.alternate.name subject.alternate.ip.address\n"
+  exit
+fi
+
+URL=$1
+FILE=`echo $URL | sed "s/\./_/g" | sed "s/\*/star/g" | sed 's/\/.*//'`
+# Remove /emailAddress if it exists from URL
+CN=`echo $URL | sed "s/\/.*//"`
+SUBJ="/C=AU/ST=Western Australia/L=Perth/O=Local/CN=$URL"
+
+SAN="DNS:"$CN
+# If CN is a wildcard, add base domain as SAN.
+if [[ $CN = "*."* ]]
+then
+  SAN=$SAN",DNS:"`echo $CN | sed "s/\*\.//g"`
+fi
+
+# Add commandline subject alternates
+if [ $# -gt 1 ]
+then
+    sans=($@)
+    i=1
+    while [ $i -lt ${#sans[@]} ]
+    do
+        if [[ ${sans[i]} =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then  # assume IPv4
+            SAN=${SAN},"IP:${sans[i]}"
+        elif [[ ${sans[i]} =~ ":" ]]; then  # assume IPv6
+            SAN=${SAN},"IP:${sans[i]}"
+        else
+            SAN=${SAN},"DNS:${sans[i]}"
+        fi
+        i=$[$i+1]
+    done
+fi
+
+BASE=`dirname $0`
+cert_ca_path=$BASE"/cacerts"
+cert_db_path=$BASE"/db"
+source $BASE/config
+
+if [ ! -f ${cert_ca_path}/${partca}.crt ]
+then
+  echo "${cert_ca_path}/${partca}.crt doesn't exists. Please create it before running this script."
+  exit 1
+fi
+
+if [ ! -f ${cert_db_path} ]
+then
+  mkdir -p ${cert_db_path}
+fi
+
+openssl req -newkey rsa:2048 -nodes \
+-keyout "$FILE.key" \
+-out "$FILE.csr" \
+-subj "$SUBJ"
+
+openssl x509 -req -days $DAYS -sha256 \
+-in "$FILE.csr" \
+-out "$FILE.crt" \
+-CA ${cert_ca_path}/${partca}.crt \
+-CAkey ${cert_ca_path}/${partca}.key \
+-CAcreateserial \
+-CAserial ${cert_db_path}/${partca}.srl \
+-extensions exts \
+-extfile <(cat \
+<(printf "[ exts ]\n") \
+<(printf "authorityKeyIdentifier=keyid:always,issuer\n") \
+<(printf "subjectKeyIdentifier=hash\n") \
+<(printf "subjectAltName=email:copy,$SAN,dirName:dir_O,dirName:dir_DC,email:root@localhost.localdomain,IP:127.0.0.1,IP:::01\n") \
+<(printf "keyUsage=critical,digitalSignature,keyEncipherment\n") \
+<(printf "extendedKeyUsage=serverAuth,clientAuth\n") \
+<(printf "basicConstraints=critical,CA:false\n") \
+<(printf "authorityInfoAccess=caIssuers;URI:${partca_uri}\n") \
+<(printf "certificatePolicies=@polsect,2.23.140.1.2.3\n") \
+<(printf "[ polsect ]\n") \
+<(printf "policyIdentifier=anyPolicy\n") \
+<(printf "CPS=${cps_uri}\n") \
+<(printf "[ dir_O ]\n") \
+<(printf "O=remote\n") \
+<(printf "OU=lab\n") \
+<(printf "CN=www\n") \
+<(printf "\n") \
+<(printf "[ dir_DC ]\n") \
+<(printf "DC=Servers/DC=ad/DC=lab\n") \
+<(printf "+DC=remote\n") \
+)
+
+# part_mksan test.local/emailAddress=test@test.local fd00::03
+# X509v3 Subject Alternative Name: 
+#     email:test@test.local, DNS:test.local, IP Address:FD00:0:0:0:0:0:0:3, DirName:/O=remote/OU=lab/CN=www, DirName:/DC=remote/DC=Servers/DC=ad/DC=lab, email:root@localhost.localdomain, IP Address:127.0.0.1, IP Address:0:0:0:0:0:0:0:1
+ 
+openssl verify -CAfile <(cat ${cert_ca_path}/${partca}.crt ${cert_ca_path}/${rootca}.crt) "$FILE.crt"

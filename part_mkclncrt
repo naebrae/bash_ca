@@ -1,0 +1,66 @@
+#!/bin/bash
+
+if [ "x$1" == "x" ]
+then
+  echo -e "Usage $0 certificate.common.name[/emailAddress=address@domain]\n"
+  exit
+fi
+
+URL=$1
+FILE=`echo $URL | sed "s/\./_/g" | sed "s/\*/star/g" | sed 's/\/.*//' | sed 's/ /_/'`
+SUBJ="/OU=Clients/CN=$URL"
+
+BASE=`dirname $0`
+cert_ca_path=$BASE"/cacerts"
+cert_db_path=$BASE"/db"
+source $BASE/config
+
+if [ ! -f ${cert_ca_path}/${partca}.crt ]
+then
+  echo "${cert_ca_path}/${partca}.crt doesn't exists. Please create it before running this script."
+  exit 1
+fi
+
+if [ ! -f ${cert_db_path} ]
+then
+  mkdir -p ${cert_db_path}
+fi
+
+# For MongoDB, a client x.509 certificate’s subject, which contains the Distinguished Name (DN), must differ from that of a server x.509 Certificate. 
+# Specifically, the subjects must differ with regards to at least one of the following attributes: Organization (O), the Organizational Unit (OU) or the Domain Component (DC).
+openssl req -newkey rsa:2048 -nodes \
+-keyout "$FILE.key" \
+-out "$FILE.csr" \
+-subj "$SUBJ"
+
+openssl x509 -req -days $DAYS -sha256 \
+-in "$FILE.csr" \
+-out "$FILE.crt" \
+-CA ${cert_ca_path}/${partca}.crt \
+-CAkey ${cert_ca_path}/${partca}.key \
+-CAcreateserial \
+-CAserial ${cert_db_path}/${partca}.srl \
+-extensions exts \
+-extfile <(cat \
+<(printf "[ exts ]\n") \
+<(printf "authorityKeyIdentifier=keyid:always,issuer\n") \
+<(printf "subjectKeyIdentifier=hash\n") \
+<(printf "subjectAltName=email:copy\n") \
+<(printf "keyUsage=critical,digitalSignature,keyEncipherment\n") \
+<(printf "extendedKeyUsage=clientAuth\n") \
+<(printf "basicConstraints=critical,CA:false\n") \
+<(printf "authorityInfoAccess=caIssuers;URI:${partca_uri}\n") \
+<(printf "certificatePolicies=@polsect\n") \
+<(printf "[ polsect ]\n") \
+<(printf "policyIdentifier=anyPolicy\n") \
+<(printf "CPS=${cps_uri}\n") \
+)
+
+if [ -f "$FILE.crt" ] && [ -f "$FILE.key" ]
+then
+  openssl pkcs12 -export -out "$FILE.pfx" -inkey "$FILE.key" -in "$FILE.crt" -name "$FILE" -certfile ${cert_ca_path}/${partca}.crt -password pass:$PASS
+else
+  echo -e "Could not file necessary files in current directory\n"
+fi
+
+openssl verify -CAfile <(cat ${cert_ca_path}/${partca}.crt ${cert_ca_path}/${rootca}.crt) "$FILE.crt"

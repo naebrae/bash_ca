@@ -1,0 +1,117 @@
+#!/bin/bash
+
+if [ "x$1" == "x" ]
+then
+  echo -e "Usage $0 certificate.common.name[/emailAddress=address@domain] [guid]\n"
+  exit
+fi
+
+URL=$1
+FILE=`echo $URL | sed "s/\./_/g" | sed "s/\*/star/g" | sed "s/\/.*//"`
+PASS="changeit"
+
+#GUID="1947e9f8-dde3-46dc-8549-a67920583998"
+GUIDOCT=""
+if [ "x$2" != "x" ]
+then
+  GUID=$2
+  if [ "x${GUID:8:1}" == "x-" ] && [ "x${GUID:13:1}" == "x-" ] && [ "x${GUID:18:1}" == "x-" ] && [ "x${GUID:23:1}" == "x-" ]
+  then
+    GUIDOCT=${GUID:6:2}${GUID:4:2}${GUID:2:2}${GUID:0:2}${GUID:11:2}${GUID:9:2}${GUID:16:2}${GUID:14:2}${GUID:19:4}${GUID:24:12}
+    # Check that the lenght of GUIDOCT is an even number (valid octal)
+    if [ $(( ${#GUIDOCT} % 2 )) -eq 0 ]
+    then
+      echo "Valid GUID"
+    else
+      echo "Invalid GUID entered! Ignoring.."
+      GUIDOCT=""
+    fi
+  else
+    echo "Invalid GUID entered! Ignoring.."
+    GUIDOCT=""
+  fi
+fi
+
+if [ "x$GUIDOCT" == "x" ]
+then
+  SAN="DNS=$URL\n"
+else
+  SAN="otherName=1.3.6.1.4.1.311.25.1;FORMAT:HEX,OCT:$GUIDOCT\nDNS=$URL\n"
+fi
+
+BASE=`dirname $0`
+cert_ca_path=$BASE"/cacerts"
+cert_db_path=$BASE"/db"
+source $BASE/config
+
+if [ ! -f ${cert_ca_path}/${winca}.crt ]
+then
+  echo "${cert_ca_path}/${winca}.crt doesn't exists. Please create it before running this script."
+  exit 1
+fi
+
+if [ ! -f ${cert_db_path} ]
+then
+  mkdir -p ${cert_db_path}
+fi
+
+openssl req -newkey rsa:2048 -nodes \
+-keyout "$FILE.key" \
+-out "$FILE.csr" \
+-subj "/CN=$URL/OU=Domain Controllers/DC=ad/DC=lab/DC=local"
+
+openssl x509 -req -days $DAYS -sha256 \
+-in "$FILE.csr" \
+-out "$FILE.crt" \
+-CA ${cert_ca_path}/${winca}.crt \
+-CAkey ${cert_ca_path}/${winca}.key \
+-CAcreateserial \
+-CAserial ${cert_db_path}/${winca}.srl \
+-extensions exts \
+-extfile <(cat \
+<(printf "[ exts ]\n") \
+<(printf "1.3.6.1.4.1.311.20.2=ASN1:BMP:DomainController\n") \
+<(printf "extendedKeyUsage=clientAuth,serverAuth\n") \
+<(printf "keyUsage=digitalSignature,keyEncipherment\n") \
+<(printf "SMIME-CAPS=ASN1:SEQUENCE:smime_seq\n") \
+<(printf "subjectAltName=@altname_sec\n") \
+<(printf "subjectKeyIdentifier=hash\n") \
+<(printf "authorityKeyIdentifier=keyid:always,issuer\n") \
+<(printf "basicConstraints=CA:false\n") \
+<(printf "[ smime_seq ]\n") \
+<(printf "SMIMECapability.0 = SEQUENCE:rc2_enc\n") \
+<(printf "SMIMECapability.1 = SEQUENCE:rc4_enc\n") \
+<(printf "SMIMECapability.2 = SEQWRAP,OID:aes-256-cbc\n") \
+<(printf "SMIMECapability.3 = SEQWRAP,OID:id-aes256-wrap\n") \
+<(printf "SMIMECapability.4 = SEQWRAP,OID:aes-128-cbc\n") \
+<(printf "SMIMECapability.5 = SEQWRAP,OID:id-aes128-wrap\n") \
+<(printf "SMIMECapability.6 = SEQWRAP,OID:des-cbc\n") \
+<(printf "SMIMECapability.7 = SEQWRAP,OID:des-ede3-cbc\n") \
+<(printf "[ rc2_enc ]\n") \
+<(printf "capabilityID=OID:rc2-cbc\n") \
+<(printf "parameter=INT:128\n") \
+<(printf "[ rc4_enc ]\n") \
+<(printf "capabilityID=OID:rc4\n") \
+<(printf "parameter=INT:128\n") \
+<(printf "[ altname_sec ]\n") \
+<(printf "$SAN\n") \
+)
+
+if [ -f "$FILE.crt" ] && [ -f "$FILE.key" ]
+then
+  openssl pkcs12 -export \
+  -inkey "$FILE.key" \
+  -in "$FILE.crt" \
+  -name "$FILE" \
+  -certfile ${cert_ca_path}/${winca}.crt \
+  -out "$FILE.p12" \
+  -keyex \
+  -CSP "Microsoft Software Key Storage Provider" \
+  -keypbe PBE-SHA1-3DES \
+  -certpbe PBE-SHA1-3DES \
+  -password pass:$PASS
+else
+  echo -e "Could not file necessary files in current directory\n"
+fi
+
+openssl verify -CAfile <(cat ${cert_ca_path}/${winca}.crt ${cert_ca_path}/${rootca}.crt) "$FILE.crt"

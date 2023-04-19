@@ -1,0 +1,53 @@
+#!/bin/bash
+
+BASE=`dirname $0`
+cert_ca_path=$BASE"/cacerts"
+cert_db_path=$BASE"/db"
+source ${BASE}/config
+
+if [ -f ${cert_ca_path}/${rootca}.crt ]
+then
+  echo "${cert_ca_path}/${rootca}.crt already exists. Please delete it if you need to recreate it."
+  exit 1
+fi
+
+if [ ! -f ${cert_ca_path} ]
+then
+  mkdir -p ${cert_ca_path}
+fi
+
+if [ ! -f ${cert_db_path} ]
+then
+  mkdir -p ${cert_db_path}
+fi
+
+if [ ! -f ${cert_db_path}/${rootca}.idx ]
+then
+  touch ${cert_db_path}/${rootca}.idx
+  echo "unique_subject = no" > ${cert_db_path}/${rootca}.idx.attr
+fi
+
+if [ ! -f ${cert_db_path}/${rootca}.srl ]
+then
+  openssl rand -hex -out ${cert_db_path}/${rootca}.srl 20
+fi
+
+openssl genrsa -out ${cert_ca_path}/${rootca}.key 2048
+
+openssl req -new -x509 -nodes -sha256 -days 7304 \
+-key ${cert_ca_path}/${rootca}.key \
+-out ${cert_ca_path}/${rootca}.crt \
+-subj "${rootca_subj}" \
+-extensions exts \
+-config <(cat \
+<(printf "[ req ]\n") \
+<(printf "distinguished_name=req_distinguished_name\n") \
+<(printf "[ req_distinguished_name ]\n") \
+<(printf "[ exts ]\n") \
+<(printf "keyUsage=critical,digitalSignature,keyCertSign,cRLSign\n") \
+<(printf "basicConstraints=critical,CA:true\n") \
+<(printf "subjectKeyIdentifier=hash\n") \
+<(printf "authorityKeyIdentifier=keyid\n") \
+)
+
+openssl verify -CAfile ${cert_ca_path}/${rootca}.crt ${cert_ca_path}/${rootca}.crt

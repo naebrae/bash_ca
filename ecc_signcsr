@@ -1,0 +1,134 @@
+#!/bin/bash
+
+if [ "x$1" == "x" ]
+then
+  echo -e "Usage $0 certificatesigning.req subject.alternate.name subject.alternate.ipaddress\n"
+  exit
+fi
+
+PASS="changeit"
+REQFILE=$1
+# Remove the extension so we can add our own
+FILE="${REQFILE%.*}"
+
+if [ ! -f "$REQFILE" ]
+then
+  echo "${REQFILE} doesn't exists. Please create it before running this script."
+  exit 1
+fi
+
+BASE=`dirname $0`
+cert_ca_path=$BASE"/cacerts"
+cert_db_path=$BASE"/db"
+source $BASE/config
+
+if [ ! -f ${cert_ca_path}/${eccca}.crt ]
+then
+  echo "${cert_ca_path}/${eccca}.crt doesn't exists. Please create it before running this script."
+  exit 1
+fi
+
+if [ ! -f ${cert_db_path} ]
+then
+  mkdir -p ${cert_db_path}
+fi
+
+if [ ! -f ${cert_db_path}/${eccca}.idx ]
+then
+  touch ${cert_db_path}/${eccca}.idx
+  touch ${cert_db_path}/${eccca}.idx.attr
+fi
+
+if [ ! -f ${cert_db_path}/${eccca}.srl ]
+then
+  openssl rand -hex -out ${cert_db_path}/${eccca}.srl 8
+fi
+
+# openssl 1.0.x -> subject=/C=AU/ST=Western Australia/L=Perth/O=Local/OU=Lab/CN=www.lab.local
+# openssl 1.1.x -> subject=C = AU, ST = Western Australia, L = Perth, O = Local, OU = Lab, CN = www.lab.local
+CN=`openssl req -noout -subject -in "$REQFILE" | sed 's/ = /=/g' | sed -n '/^subject/s/^.*CN=//p' | sed 's/\/.*//'`
+if [ "x$CN" == "x" ]
+then
+  echo "CSR does not contain a subject. Can not continue."
+  exit 1
+fi
+
+SAN="DNS:"$CN
+# If CN is a wildcard, add base domain as SAN.
+if [[ $CN = "*."* ]]
+then
+  SAN=$SAN",DNS:"`echo $CN | sed "s/\*\.//g"`
+fi
+
+# Add commandline subject alternates
+if [ $# -gt 1 ]
+then
+    sans=($@)
+    i=1
+    while [ $i -lt ${#sans[@]} ]
+    do
+        if [[ ${sans[i]} =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            SAN=${SAN},"IP:${sans[i]}"
+        elif [[ ${sans[i]} =~ ":" ]]; then  # assume IPv6
+            SAN=${SAN},"IP:${sans[i]}"
+        else
+            SAN=${SAN},"DNS:${sans[i]}"
+        fi
+        i=$[$i+1]
+    done
+fi
+
+openssl ca -batch -days $DAYS \
+-in "$REQFILE" \
+-out "$FILE.crt" \
+-keyfile ${cert_ca_path}/${eccca}.key \
+-cert ${cert_ca_path}/${eccca}.crt \
+-name servers_CA \
+-config <(cat \
+<(printf "[ servers_CA ]\n") \
+<(printf "database=${cert_db_path}/${eccca}.idx\n") \
+<(printf "default_md=sha256\n") \
+<(printf "serial=${cert_db_path}/${eccca}.srl\n") \
+<(printf "new_certs_dir=${cert_db_path}\n") \
+<(printf "policy=policy_anything\n") \
+<(printf "[ policy_anything ]\n") \
+<(printf "countryName=optional\n") \
+<(printf "stateOrProvinceName=optional\n") \
+<(printf "localityName=optional\n") \
+<(printf "organizationName=optional\n") \
+<(printf "organizationalUnitName=optional\n") \
+<(printf "commonName=supplied\n") \
+<(printf "emailAddress=optional\n") \
+) \
+-extensions exts \
+-extfile <(cat \
+<(printf "[ exts ]\n") \
+<(printf "authorityKeyIdentifier=keyid:always,issuer\n") \
+<(printf "subjectKeyIdentifier=hash\n") \
+<(printf "subjectAltName=$SAN\n") \
+<(printf "keyUsage=critical,digitalSignature,keyEncipherment\n") \
+<(printf "extendedKeyUsage=serverAuth,clientAuth\n") \
+<(printf "crlDistributionPoints=URI:${eccca_crl}\n") \
+<(printf "certificatePolicies=@polsect\n") \
+<(printf "authorityInfoAccess=OCSP;URI:${ocsp_uri},caIssuers;URI:${eccca_uri}\n") \
+<(printf "basicConstraints=critical,CA:false\n") \
+<(printf "[ polsect ]\n") \
+<(printf "policyIdentifier=anyPolicy\n") \
+<(printf "CPS=${cps_uri}\n") \
+)
+
+if [ -f "$FILE.crt" ] && [ -f "$FILE.key" ]
+then
+  openssl pkcs12 -export \
+  -inkey "$FILE.key" \
+  -in "$FILE.crt" \
+  -name "$FILE" \
+  -out "$FILE.pfx" \
+  -certfile ${cert_ca_path}/${eccca}.crt \
+  -password pass:$PASS
+elif [ -f "$FILE.crt" ]
+then
+  openssl crl2pkcs7 -nocrl -certfile "$FILE.crt" -out "$FILE.p7b" -certfile ${cert_ca_path}/${eccca}.crt
+fi
+
+openssl verify -CAfile <(cat ${cert_ca_path}/${eccca}.crt ${cert_ca_path}/${rootca}.crt) "$FILE.crt"

@@ -1,0 +1,57 @@
+#!/bin/bash
+
+if [ "x$1" == "x" ]
+then
+  echo -e "Usage $0 certificate.file\n"
+  exit
+fi
+
+FILE=$1
+
+if [ ! -f "$FILE" ]
+then
+  echo -e "Could not find $FILE! Exiting..\n"
+  exit
+fi
+
+BASE=`dirname $0`
+cert_ca_path=$BASE"/cacerts"
+cert_db_path=$BASE"/db"
+source $BASE/config
+
+revokes_CA="[ revokes_CA ]\ndatabase=${cert_db_path}/${fullca}.idx\ndefault_md=sha256\n"
+
+if [ ! -f ${cert_ca_path}/${fullca}.crt ]
+then
+  echo "${cert_ca_path}/${fullca}.crt doesn't exists. Please create it before running this script."
+  exit 1
+fi
+
+if [ ! -f ${cert_db_path} ]
+then
+  mkdir -p ${cert_db_path}
+fi
+
+if [ ! -f ${cert_db_path}/${fullca}.idx ]
+then
+  touch ${cert_db_path}/${fullca}.idx
+  touch ${cert_db_path}/${fullca}.idx.attr
+fi
+
+openssl ca -revoke "$FILE" \
+-keyfile ${cert_ca_path}/${fullca}.key \
+-cert ${cert_ca_path}/${fullca}.crt \
+-name revokes_CA \
+-config <(printf "$revokes_CA")
+
+openssl ca -gencrl \
+-keyfile ${cert_ca_path}/${fullca}.key \
+-cert ${cert_ca_path}/${fullca}.crt \
+-out ${cert_db_path}/${fullca}.crl \
+-crldays 1 \
+-name revokes_CA \
+-config <(printf "$revokes_CA")
+
+openssl crl -in ${cert_db_path}/${fullca}.crl -CAfile ${cert_ca_path}/${fullca}.crt -noout
+
+openssl verify -crl_check -CAfile <(cat ${cert_ca_path}/${rootca}.crt ${cert_ca_path}/${fullca}.crt ${cert_db_path}/${fullca}.crl) "$FILE"

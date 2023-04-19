@@ -1,0 +1,32 @@
+#!/bin/bash
+
+DAYS=365
+
+ocsp_uri="http://ocsp.lab.local"
+cps_uri="https://www.lab.local/CPS"
+
+rootca="root_ca"
+rootca_subj="/C=AU/O=Local Lab/OU=www.lab.local/CN=Local Lab Root"
+rootca_uri="http://ca.lab.local/${rootca}.crt"
+rootca_crl="http://ca.lab.local/${rootca}.crl"
+
+partca="partial_ca"
+partca_subj="/C=AU/O=Local Lab/CN=Local Lab Partial CA"
+partca_uri="http://ca.lab.local/${partca}.crt"
+
+fullca="full_ca"
+fullca_subj="/C=AU/O=Local Lab/OU=www.lab.local/CN=Local Lab Full CA"
+fullca_uri="http://ca.lab.local/${fullca}.crt"
+fullca_crl="http://ca.lab.local/${fullca}.crl"
+
+winca="win_ca"
+winca_subj="/CN=Local Lab Windows CA"
+winca_uri="http://ca.lab.local/${winca}.crt"
+winca_crl="http://ca.lab.local/${winca}.crl"
+
+eccca="ecc_ca"
+eccca_subj="/CN=Local Lab ECC CA"
+eccca_uri="http://ca.lab.local/${eccca}.crt"
+eccca_crl="http://ca.lab.local/${eccca}.crl"
+
+

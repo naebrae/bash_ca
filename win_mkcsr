@@ -1,0 +1,57 @@
+#!/bin/bash
+
+if [ "x$1" == "x" ]
+then
+  echo -e "Usage $0 certificate.common.name subject.alternate.name subject.alternate.ipaddress\n"
+  exit
+fi
+
+URL=$1
+FILE=`echo $URL | sed "s/\./_/g" | sed "s/\*/star/g" | sed "s/\/.*//"`
+# Remove /emailAddress if it exists from URL
+CN=`echo $URL | sed "s/\/.*//"`
+SUBJ="/C=AU/ST=Western Australia/L=Perth/O=Local/OU=Lab/CN=$URL"
+
+SAN="DNS:"$CN
+# If CN is a wildcard, add base domain as SAN.
+if [[ $CN = "*."* ]]
+then
+  SAN=$SAN",DNS:"`echo $CN | sed "s/\*\.//g"`
+fi
+
+# Add commandline subject alternates
+if [ $# -gt 1 ]
+then
+    sans=($@)
+    i=1
+    while [ $i -lt ${#sans[@]} ]
+    do
+        if [[ ${sans[i]} =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            SAN=${SAN},"IP:${sans[i]}"
+        elif [[ ${sans[i]} =~ ":" ]]; then  # assume IPv6
+            SAN=${SAN},"IP:${sans[i]}"
+        else
+            SAN=${SAN},"DNS:${sans[i]}"
+        fi
+        i=$[$i+1]
+    done
+fi
+
+openssl req -newkey rsa:2048 -nodes \
+-keyout "$FILE.key" \
+-out "$FILE.csr" \
+-subj "$SUBJ" \
+-reqexts req_ext \
+-config <(cat \
+<(printf "oid_section=new_oids\n") \
+<(printf "[ new_oids ]\n") \
+<(printf "certificateTemplate=1.3.6.1.4.1.311.20.2\n") \
+<(printf "[ req ]\n") \
+<(printf "distinguished_name=req_distinguished_name\n") \
+<(printf "[ req_distinguished_name ]\n") \
+<(printf "[ req_ext ]\n") \
+<(printf "keyUsage=critical,keyEncipherment,dataEncipherment\n") \
+<(printf "certificateTemplate=ASN1:BMP:WebServer\n") \
+<(printf "subjectKeyIdentifier=hash\n") \
+<(printf "subjectAltName=$SAN\n") \
+)

@@ -1,0 +1,94 @@
+#!/bin/bash
+
+if [ "x$1" == "x" ]
+then
+  echo -e "Usage $0 certificatesigning.req\n"
+  exit
+fi
+
+PASS="changeit"
+REQFILE=$1
+# Remove the extension so we can add our own
+FILE="${REQFILE%.*}"
+
+if [ ! -f "$REQFILE" ]
+then
+  echo "${REQFILE} doesn't exists. Please create it before running this script."
+  exit 1
+fi
+
+BASE=`dirname $0`
+cert_ca_path=$BASE"/cacerts"
+cert_db_path=$BASE"/db"
+source $BASE/config
+
+if [ ! -f ${cert_ca_path}/${winca}.crt ]
+then
+  echo "${cert_ca_path}/${winca}.crt doesn't exists. Please create it before running this script."
+  exit 1
+fi
+
+if [ ! -f ${cert_db_path} ]
+then
+  mkdir -p ${cert_db_path}
+fi
+
+if [ ! -f ${cert_db_path}/${winca}.idx ]
+then
+  touch ${cert_db_path}/${winca}.idx
+  touch ${cert_db_path}/${winca}.idx.attr
+fi
+
+if [ ! -f ${cert_db_path}/${winca}.srl ]
+then
+  openssl rand -hex -out ${cert_db_path}/${winca}.srl 8
+fi
+
+# A blank extensions section is needed to create a version 3 certificate
+openssl ca -batch -days $DAYS \
+-in "$REQFILE" \
+-out "$FILE.crt" \
+-keyfile ${cert_ca_path}/${winca}.key \
+-cert ${cert_ca_path}/${winca}.crt \
+-name windows_CA \
+-config <(cat \
+<(printf "[ windows_CA ]\n") \
+<(printf "copy_extensions=copy\n") \
+<(printf "database=${cert_db_path}/${winca}.idx\n") \
+<(printf "default_md=sha256\n") \
+<(printf "serial=${cert_db_path}/${winca}.srl\n") \
+<(printf "new_certs_dir=${cert_db_path}\n") \
+<(printf "policy=policy_anything\n") \
+<(printf "[ policy_anything ]\n") \
+<(printf "countryName=optional\n") \
+<(printf "stateOrProvinceName=optional\n") \
+<(printf "localityName=optional\n") \
+<(printf "organizationName=optional\n") \
+<(printf "organizationalUnitName=optional\n") \
+<(printf "commonName=supplied\n") \
+<(printf "emailAddress=optional\n") \
+) \
+-extensions exts \
+-extfile <(cat \
+<(printf "[ exts ]\n") \
+)
+
+if [ -f "$FILE.crt" ] && [ -f "$FILE.key" ]
+then
+  openssl pkcs12 -export \
+  -inkey "$FILE.key" \
+  -in "$FILE.crt" \
+  -name "$FILE" \
+  -out "$FILE.p12" \
+  -certfile ${cert_ca_path}/${winca}.crt \
+  -keyex \
+  -CSP "Microsoft Software Key Storage Provider" \
+  -keypbe PBE-SHA1-3DES \
+  -certpbe PBE-SHA1-3DES \
+  -password pass:$PASS
+elif [ -f "$FILE.crt" ]
+then
+  openssl crl2pkcs7 -nocrl -certfile "$FILE.crt" -out "$FILE.p7b" -certfile ${cert_ca_path}/${winca}.crt
+fi
+
+openssl verify -CAfile <(cat ${cert_ca_path}/${winca}.crt ${cert_ca_path}/${rootca}.crt) "$FILE.crt"
