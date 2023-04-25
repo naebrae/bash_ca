@@ -10,7 +10,7 @@ URL=$1
 FILE=`echo $URL | sed "s/\./_/g" | sed "s/\*/star/g" | sed "s/\/.*//"`
 # Remove /emailAddress if it exists from URL
 CN=`echo $URL | sed "s/\/.*//"`
-SUBJ="/C=AU/ST=Western Australia/L=Perth/O=Local/OU=Lab/CN=$URL"
+SUBJ="/C=AU/ST=Western Australia/L=Perth/O=Home/OU=Lab/CN=$URL"
 
 SAN="DNS:"$CN
 # If CN is a wildcard, add base domain as SAN.

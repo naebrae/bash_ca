@@ -2,7 +2,7 @@
 
 These scripts are working examples of using openssl without a configuration file for typical certificate authority tasks. 
 
-They create three RSA based Certificate Authorities (CA) certificates with two optional CA's: the root CA 'Local Lab Root' and the two intermediate CA's 'Local Lab Full CA' and 'Local Lab Partial CA'. The optional CA's are 'Local Lab Windows CA' and an Elliptic Curve Cryptography 'Local Lab ECC CA'.
+They create three RSA based Certificate Authorities (CA) certificates with two optional CA's: the root CA 'Home Lab Root' and the two intermediate CA's 'Home Lab Full CA' and 'Home Lab Partial CA'. The optional CA's are 'Home Lab Windows CA' and an Elliptic Curve Cryptography 'Home Lab ECC CA'.
 
 The multiple intermediate CA only exist so that the same subject certificates can be created but with different issuers. The issuer can be tested for in a client certificate for MySQL as an example of use.
 
@@ -21,25 +21,25 @@ Need to be run first and only once.
 
 ### 1.1. mkrootca
 
-Creates a cacerts folder with the CA certificate 'Local Lab Root' (root_ca.crt).
+Creates a cacerts folder with the CA certificate 'Home Lab Root' (root_ca.crt).
 
 The certificate created replicates DigiCert certificates in terms of extensions or attributes. This is so that testing using these certificate models certificates used in production.
 
 ### 1.2. mkfullca
 
-Creates a cacerts folder with the CA certificate 'Local Lab Full CA' (full_ca.crt). The certificate is signed with the root_ca certificate so mkrootca has to be run first.
+Creates a cacerts folder with the CA certificate 'Home Lab Full CA' (full_ca.crt). The certificate is signed with the root_ca certificate so mkrootca has to be run first.
 
 The certificate created replicate DigiCert certificates in terms of extensions or attributes. This is so that testing using these certificate models certificates used in production.
 
 ### 1.3. mkpartca
 
-Creates a cacerts folder with the CA certificate 'Local Lab Partial CA' (partial_ca.crt). The certificate is signed with the root_ca certificate so mkrootca has to be run first.
+Creates a cacerts folder with the CA certificate 'Home Lab Partial CA' (partial_ca.crt). The certificate is signed with the root_ca certificate so mkrootca has to be run first.
 
 The certificates created replicate DigiCert certificates in terms of extensions or attributes. This is so that testing using these certificate models certificates used in production.
 
 ### 1.4. mkwinca
 
-Creates the options CA 'Local Lab Windows CA' (win_ca.crt). Only run once if needed.
+Creates the options CA 'Home Lab Windows CA' (win_ca.crt). Only run once if needed.
 
 The certificates created replicate Microsoft ADCS certificates in terms of extensions or attributes. This is so that testing using these certificate models certificates used in production.
 ```
@@ -56,7 +56,7 @@ Note: The p12 file above has additional Microsoft features.
 
 ### 1.5. mkeccca
 
-Creates the options CA 'Local Lab ECC CA' (ecc_ca.crt) with a prime256v1 curve key. Only run if needed.
+Creates the options CA 'Home Lab ECC CA' (ecc_ca.crt) with a prime256v1 curve key. Only run if needed.
 
 
 ## 2. Full CA scripts
@@ -141,22 +141,22 @@ Creates a ECC CSR and signs it with the Partial CA adding extensions consistant 
 Creates a certificate with Resource Public Key Infrastructure extensions.
 
 ```
-./part_mkrpki part4.lab.local 127.0.0.4
+./part_mkrpki part4.lab.home 127.0.0.4
 ```
 
 ```
 Certificate:
     Data:
         Version: 3 (0x2)
-        Issuer: C = AU, O = Local Lab, CN = Local Lab Partial CA
-        Subject: C = AU, ST = Western Australia, L = Perth, O = Local, CN = part4.lab.local
+        Issuer: C = AU, O = Home Lab, CN = Home Lab Partial CA
+        Subject: C = AU, ST = Western Australia, L = Perth, O = Home, CN = part4.lab.home
         X509v3 extensions:
             X509v3 Authority Key Identifier:
                 52:A0:71:F7:9D:0A:C6:5E:2D:D0:9E:37:DE:BF:EC:51:C3:E8:A8:8D
             X509v3 Subject Key Identifier:
                 25:E9:F8:ED:AF:CA:BC:80:47:5F:AA:D4:E1:27:C9:7E:98:9C:F0:CD
             X509v3 Subject Alternative Name:
-                DNS:part4.lab.local, IP Address:127.0.0.4
+                DNS:part4.lab.home, IP Address:127.0.0.4
             sbgp-autonomousSysNum: critical
                 Autonomous System Numbers:
                   64512-65534
@@ -176,10 +176,10 @@ Certificate:
             X509v3 Basic Constraints: critical
                 CA:FALSE
             Authority Information Access:
-                CA Issuers - URI:http://ca.lab.local/partial_ca.crt
+                CA Issuers - URI:http://ca.lab.home/partial_ca.crt
             X509v3 Certificate Policies:
                 Policy: X509v3 Any Policy
-                  CPS: https://www.lab.local/CPS
+                  CPS: https://www.lab.home/CPS
                 Policy: 2.23.140.1.2.3
 ```
 
@@ -189,9 +189,9 @@ Creates a certificate with a number of different Subject Alternate Names.
 > Used as a example only how to add SAN details.
 
 ```
-./part_mksan part5.lab.local 127.0.0.5
+./part_mksan part5.lab.home 127.0.0.5
 ```
-> $SAN = DNS:part5.lab.local,IP:127.0.0.5
+> $SAN = DNS:part5.lab.home,IP:127.0.0.5
 
 ```
 subjectAltName=email:copy,$SAN,dirName:dir_O,dirName:dir_DC,email:root@localhost.localdomain,IP:127.0.0.1,IP:::01
@@ -208,11 +208,11 @@ DC=Servers/DC=ad/DC=lab
 Certificate:
     Data:
         Version: 3 (0x2)
-        Issuer: C = AU, O = Local Lab, CN = Local Lab Partial CA
-        Subject: C = AU, ST = Western Australia, L = Perth, O = Local, CN = part5.lab.local
+        Issuer: C = AU, O = Home Lab, CN = Home Lab Partial CA
+        Subject: C = AU, ST = Western Australia, L = Perth, O = Home, CN = part5.lab.home
         X509v3 extensions:
             X509v3 Subject Alternative Name:
-                DNS:part5.lab.local, IP Address:127.0.0.5, DirName:/O=remote/OU=lab/CN=www, DirName:/DC=remote+DC=Servers\/DC=ad\/DC=lab, email:root@localhost.localdomain, IP Address:127.0.0.1, IP Address:0:0:0:0:0:0:0:1
+                DNS:part5.lab.home, IP Address:127.0.0.5, DirName:/O=remote/OU=lab/CN=www, DirName:/DC=remote+DC=Servers\/DC=ad\/DC=lab, email:root@localhost.localdomain, IP Address:127.0.0.1, IP Address:0:0:0:0:0:0:0:1
 ```
 
 ### 3.7. part_signcsr
@@ -229,7 +229,7 @@ These operate against the optional Windows CA and create certificates with Micro
 Creates a certificate with the extensions S/MIME, GUID in subjectAltName.
 
 ```
-./win_dccrt win1.ad.lab.local 00000000-0000-0000-0000-000000000000
+./win_dccrt win1.ad.lab.home 00000000-0000-0000-0000-000000000000
 
 ```
 
@@ -237,8 +237,8 @@ Creates a certificate with the extensions S/MIME, GUID in subjectAltName.
 Certificate:
     Data:
         Version: 3 (0x2)
-        Issuer: CN = Local Lab Windows CA
-        Subject: CN = win1.ad.lab.local, OU = Domain Controllers, DC = ad, DC = lab, DC = local
+        Issuer: CN = Home Lab Windows CA
+        Subject: CN = win1.ad.lab.home, OU = Domain Controllers, DC = ad, DC = lab, DC = home
         X509v3 extensions:
             1.3.6.1.4.1.311.20.2:
                 . .D.o.m.a.i.n.C.o.n.t.r.o.l.l.e.r
@@ -250,7 +250,7 @@ Certificate:
 ......0...`.H.e...*0...`.H.e...-0...`.H.e....0...`.H.e....0...+....0
 ..*.H..
             X509v3 Subject Alternative Name:
-                othername: 1.3.6.1.4.1.311.25.1::<unsupported>, DNS:win1.ad.lab.local
+                othername: 1.3.6.1.4.1.311.25.1::<unsupported>, DNS:win1.ad.lab.home
             X509v3 Subject Key Identifier:
                 39:D9:C2:E8:E1:11:A5:60:4B:6F:95:46:01:5D:D1:08:D2:D5:22:27
             X509v3 Authority Key Identifier:

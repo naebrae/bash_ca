@@ -44,8 +44,8 @@ then
   openssl rand -hex -out ${cert_db_path}/${eccca}.srl 8
 fi
 
-# openssl 1.0.x -> subject=/C=AU/ST=Western Australia/L=Perth/O=Local/OU=Lab/CN=www.lab.local
-# openssl 1.1.x -> subject=C = AU, ST = Western Australia, L = Perth, O = Local, OU = Lab, CN = www.lab.local
+# openssl 1.0.x -> subject=/C=AU/ST=Western Australia/L=Perth/O=Home/OU=Lab/CN=www.lab.home
+# openssl 1.1.x -> subject=C = AU, ST = Western Australia, L = Perth, O = Home, OU = Lab, CN = www.lab.home
 CN=`openssl req -noout -subject -in "$REQFILE" | sed 's/ = /=/g' | sed -n '/^subject/s/^.*CN=//p' | sed 's/\/.*//'`
 if [ "x$CN" == "x" ]
 then

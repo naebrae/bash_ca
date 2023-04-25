@@ -18,7 +18,7 @@ SUBJ="\
 /serialNumber=123 45\
 /streetAddress=123 My Street\
 /postalCode=6000\
-/C=AU/ST=Western Australia/L=Perth/O=Local/OU=Lab/CN=$URL"
+/C=AU/ST=Western Australia/L=Perth/O=Home/OU=Lab/CN=$URL"
 PASS="changeit"
 
 BASE=`dirname $0`

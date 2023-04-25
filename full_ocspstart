@@ -16,17 +16,17 @@ then
   mkdir -p ${cert_db_path}
 fi
 
-if [ ! -f ${cert_ca_path}/ocsp_lab_local.crt ]
+if [ ! -f ${cert_ca_path}/ocsp_lab_home.crt ]
 then
-  openssl genrsa -out ${cert_ca_path}/ocsp_lab_local.key 4096
+  openssl genrsa -out ${cert_ca_path}/ocsp_lab_home.key 4096
   openssl req -new -nodes \
-  -key ${cert_ca_path}/ocsp_lab_local.key \
-  -out ${cert_ca_path}/ocsp_lab_local.csr \
-  -subj "/C=AU/O=Local Lab/CN=ocsp.lab.local"
+  -key ${cert_ca_path}/ocsp_lab_home.key \
+  -out ${cert_ca_path}/ocsp_lab_home.csr \
+  -subj "/C=AU/O=Home Lab/CN=ocsp.lab.home"
 
   openssl x509 -req -days $DAYS -sha256 \
-  -in ${cert_ca_path}/ocsp_lab_local.csr \
-  -out ${cert_ca_path}/ocsp_lab_local.crt \
+  -in ${cert_ca_path}/ocsp_lab_home.csr \
+  -out ${cert_ca_path}/ocsp_lab_home.crt \
   -CA ${cert_ca_path}/${fullca}.crt -CAkey ${cert_ca_path}/${fullca}.key \
   -CAcreateserial -CAserial ${cert_db_path}/${fullca}.srl \
   -extensions exts \
@@ -39,12 +39,12 @@ then
   <(printf "extendedKeyUsage=critical,OCSPSigning\n") \
   )
 
-  openssl verify -CAfile <(cat ${cert_ca_path}/${fullca}.crt ${cert_ca_path}/${rootca}.crt) ${cert_ca_path}/ocsp_lab_local.crt
+  openssl verify -CAfile <(cat ${cert_ca_path}/${fullca}.crt ${cert_ca_path}/${rootca}.crt) ${cert_ca_path}/ocsp_lab_home.crt
 fi
 
 openssl ocsp -port 2560 -resp_key_id -resp_no_certs \
 -CA ${cert_ca_path}/${fullca}.crt \
 -index ${cert_db_path}/${fullca}.idx \
--rkey ${cert_ca_path}/ocsp_lab_local.key \
--rsigner ${cert_ca_path}/ocsp_lab_local.crt \
+-rkey ${cert_ca_path}/ocsp_lab_home.key \
+-rsigner ${cert_ca_path}/ocsp_lab_home.crt \
 -nrequest 1

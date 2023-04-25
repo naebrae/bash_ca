@@ -58,7 +58,7 @@ fi
 openssl req -newkey rsa:2048 -nodes \
 -keyout "$FILE.key" \
 -out "$FILE.csr" \
--subj "/CN=$URL/OU=Domain Controllers/DC=ad/DC=lab/DC=local"
+-subj "/CN=$URL/OU=Domain Controllers/DC=ad/DC=lab/DC=home"
 
 openssl x509 -req -days $DAYS -sha256 \
 -in "$FILE.csr" \

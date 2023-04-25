@@ -10,7 +10,7 @@ URL=$1
 FILE=`echo $URL | sed "s/\./_/g" | sed "s/\*/star/g" | sed 's/\/.*//'`
 # Remove /emailAddress if it exists from URL
 CN=`echo $URL | sed "s/\/.*//"`
-SUBJ="/C=AU/ST=Western Australia/L=Perth/O=Local/CN=$URL"
+SUBJ="/C=AU/ST=Western Australia/L=Perth/O=Home/CN=$URL"
 
 SAN="DNS:"$CN
 # If CN is a wildcard, add base domain as SAN.
@@ -89,8 +89,8 @@ openssl x509 -req -days $DAYS -sha256 \
 <(printf "+DC=remote\n") \
 )
 
-# part_mksan test.local/emailAddress=test@test.local fd00::03
+# part_mksan lab.home/emailAddress=test@lab.home fd00::03
 # X509v3 Subject Alternative Name: 
-#     email:test@test.local, DNS:test.local, IP Address:FD00:0:0:0:0:0:0:3, DirName:/O=remote/OU=lab/CN=www, DirName:/DC=remote/DC=Servers/DC=ad/DC=lab, email:root@localhost.localdomain, IP Address:127.0.0.1, IP Address:0:0:0:0:0:0:0:1
+#     email:test@lab.home, DNS:lab.home, IP Address:FD00:0:0:0:0:0:0:3, DirName:/O=remote/OU=lab/CN=www, DirName:/DC=remote/DC=Servers/DC=ad/DC=lab/DC=home, email:root@localhost.localdomain, IP Address:127.0.0.1, IP Address:0:0:0:0:0:0:0:1
  
 openssl verify -CAfile <(cat ${cert_ca_path}/${partca}.crt ${cert_ca_path}/${rootca}.crt) "$FILE.crt"

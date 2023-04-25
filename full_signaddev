@@ -43,8 +43,8 @@ then
   openssl rand -hex -out ${cert_db_path}/${fullca}.srl 8
 fi
 
-# openssl 1.0.x -> subject=/C=AU/ST=Western Australia/L=Perth/O=Local/OU=Lab/CN=www.lab.local
-# openssl 1.1.x -> subject=C = AU, ST = Western Australia, L = Perth, O = Local, OU = Lab, CN = www.lab.local
+# openssl 1.0.x -> subject=/C=AU/ST=Western Australia/L=Perth/O=Home/OU=Lab/CN=www.lab.home
+# openssl 1.1.x -> subject=C = AU, ST = Western Australia, L = Perth, O = Home, OU = Lab, CN = www.lab.home
 URL=`openssl req -noout -subject -in "$REQFILE" | sed 's/ = /=/g' | sed -n '/^subject/s/^.*CN=//p' | sed 's/\/.*//'`
 if [ "x$URL" == "x" ]
 then
@@ -61,7 +61,7 @@ newsubj="\
 /serialNumber=123 45\
 /streetAddress=123 My Street\
 /postalCode=6000\
-/C=AU/ST=Western Australia/L=Perth/O=Local/OU=Lab/CN=$URL"
+/C=AU/ST=Western Australia/L=Perth/O=Home/OU=Lab/CN=$URL"
 
 #https://cabforum.org/ev-certificate-contents/
 #Business Category (EVG 9.2.4) – This field must contain one of the following strings: “Private Organization”, “Government Entity”, “Business Entity”, or “Non-Commercial Entity”

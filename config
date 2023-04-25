@@ -2,31 +2,31 @@
 
 DAYS=365
 
-ocsp_uri="http://ocsp.lab.local"
-cps_uri="https://www.lab.local/CPS"
+ocsp_uri="http://ocsp.lab.home"
+cps_uri="https://www.lab.home/CPS"
 
 rootca="root_ca"
-rootca_subj="/C=AU/O=Local Lab/OU=www.lab.local/CN=Local Lab Root"
-rootca_uri="http://ca.lab.local/${rootca}.crt"
-rootca_crl="http://ca.lab.local/${rootca}.crl"
+rootca_subj="/C=AU/O=Home Lab/OU=www.lab.home/CN=Home Lab Root"
+rootca_uri="http://ca.lab.home/${rootca}.crt"
+rootca_crl="http://ca.lab.home/${rootca}.crl"
 
 partca="partial_ca"
-partca_subj="/C=AU/O=Local Lab/CN=Local Lab Partial CA"
-partca_uri="http://ca.lab.local/${partca}.crt"
+partca_subj="/C=AU/O=Home Lab/CN=Home Lab Partial CA"
+partca_uri="http://ca.lab.home/${partca}.crt"
 
 fullca="full_ca"
-fullca_subj="/C=AU/O=Local Lab/OU=www.lab.local/CN=Local Lab Full CA"
-fullca_uri="http://ca.lab.local/${fullca}.crt"
-fullca_crl="http://ca.lab.local/${fullca}.crl"
+fullca_subj="/C=AU/O=Home Lab/OU=www.lab.home/CN=Home Lab Full CA"
+fullca_uri="http://ca.lab.home/${fullca}.crt"
+fullca_crl="http://ca.lab.home/${fullca}.crl"
 
 winca="win_ca"
-winca_subj="/CN=Local Lab Windows CA"
-winca_uri="http://ca.lab.local/${winca}.crt"
-winca_crl="http://ca.lab.local/${winca}.crl"
+winca_subj="/CN=Home Lab Windows CA"
+winca_uri="http://ca.lab.home/${winca}.crt"
+winca_crl="http://ca.lab.home/${winca}.crl"
 
 eccca="ecc_ca"
-eccca_subj="/CN=Local Lab ECC CA"
-eccca_uri="http://ca.lab.local/${eccca}.crt"
-eccca_crl="http://ca.lab.local/${eccca}.crl"
+eccca_subj="/CN=Home Lab ECC CA"
+eccca_uri="http://ca.lab.home/${eccca}.crt"
+eccca_crl="http://ca.lab.home/${eccca}.crl"
 
 

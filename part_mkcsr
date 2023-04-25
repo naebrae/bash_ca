@@ -8,7 +8,7 @@ fi
 
 URL=$1
 FILE=`echo $URL | sed "s/\./_/g" | sed "s/\*/star/g"`
-SUBJ="/C=AU/ST=Western Australia/L=Perth/O=Local/CN=$URL"
+SUBJ="/C=AU/ST=Western Australia/L=Perth/O=Home/CN=$URL"
 
 openssl req -new -newkey rsa:2048 -nodes \
 -out $FILE.csr \

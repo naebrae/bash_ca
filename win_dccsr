@@ -34,7 +34,7 @@ fi
 openssl req -newkey rsa:2048 -nodes \
 -keyout "$FILE.key" \
 -out "$FILE.csr" \
--subj "/CN=$URL/OU=Computers/DC=ad/DC=lab/DC=local/" \
+-subj "/CN=$URL/OU=Computers/DC=ad/DC=lab/DC=home/" \
 -extensions req_attributes \
 -reqexts req_ext \
 -config <(cat \
